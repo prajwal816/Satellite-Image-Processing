@@ -1,0 +1,150 @@
+"""Single-image or batch inference for EuroSAT CNN classifier."""
+
+import argparse
+import logging
+import os
+
+import cv2
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+import yaml
+from tensorflow import keras
+
+logger = logging.getLogger(__name__)
+
+
+def load_config(path: str) -> dict:
+    """Load a YAML configuration file."""
+    with open(path, "r", encoding="utf-8") as fh:
+        return yaml.safe_load(fh)
+
+
+def predict_single(
+    model: keras.Model,
+    img_path: str,
+    categories: list[str],
+    image_size: tuple[int, int] = (64, 64),
+    save_vis: str | None = None,
+) -> str:
+    """Run inference on a single .tif image and optionally save visualisation.
+
+    Parameters
+    ----------
+    model : keras.Model
+        Trained classification model.
+    img_path : str
+        Path to a ``.tif`` satellite image.
+    categories : list[str]
+        Ordered list of class names.
+    image_size : tuple[int, int]
+        Input size expected by the model.
+    save_vis : str | None
+        If given, save a visualisation (original + edge maps) to this path.
+
+    Returns
+    -------
+    str
+        Predicted class name.
+    """
+    from satellite_image_processing.data import load_tiff_image
+
+    img = load_tiff_image(img_path, image_size=image_size)
+    img_input = np.expand_dims(img, axis=0)
+
+    prediction = model.predict(img_input, verbose=0)
+    predicted_idx = int(np.argmax(prediction))
+    predicted_class = categories[predicted_idx] if predicted_idx < len(categories) else str(predicted_idx)
+    confidence = float(prediction[0][predicted_idx])
+
+    logger.info(
+        "%s → %s (confidence: %.2f%%)", img_path, predicted_class, confidence * 100,
+    )
+
+    if save_vis:
+        # Edge-detection visualisation
+        img_uint8 = (img * 255).astype(np.uint8)
+        img_gray = cv2.cvtColor(img_uint8, cv2.COLOR_RGB2GRAY)
+        laplacian = cv2.Laplacian(img_gray, cv2.CV_64F)
+        canny = cv2.Canny(img_gray, 100, 200)
+
+        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+        axes[0].imshow(img)
+        axes[0].set_title(f"Predicted: {predicted_class}")
+        axes[0].axis("off")
+        axes[1].imshow(laplacian, cmap="gray")
+        axes[1].set_title("Laplacian Edge Detection")
+        axes[1].axis("off")
+        axes[2].imshow(canny, cmap="gray")
+        axes[2].set_title("Canny Edge Detection")
+        axes[2].axis("off")
+        plt.tight_layout()
+
+        os.makedirs(os.path.dirname(save_vis) or ".", exist_ok=True)
+        plt.savefig(save_vis, dpi=150)
+        plt.close(fig)
+        logger.info("Visualisation saved to: %s", save_vis)
+
+    return predicted_class
+
+
+def main(args: list[str] | None = None) -> None:
+    """CLI entrypoint for single-image inference."""
+    parser = argparse.ArgumentParser(description="EuroSAT CNN inference")
+    parser.add_argument(
+        "--config", type=str, default="configs/default.yaml",
+        help="Path to YAML config file",
+    )
+    parser.add_argument("--model", type=str, default=None, help="Override model path")
+    parser.add_argument("--image", type=str, required=True, help="Path to .tif image for prediction")
+    parser.add_argument("--save-vis", type=str, default=None, help="Save visualisation to this path")
+    parser.add_argument(
+        "--categories", type=str, nargs="*", default=None,
+        help="Class names (auto-detected from data dir if omitted)",
+    )
+    parser.add_argument("--data-dir", type=str, default=None, help="Dataset path for auto-detecting categories")
+    parsed = parser.parse_args(args=args)
+
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+
+    # Load config
+    cfg = load_config(parsed.config)
+    data_cfg = cfg.get("data", {})
+    model_cfg = cfg.get("model", {})
+
+    model_path = parsed.model or model_cfg.get("save_path", "models/eurosat_cnn_model.h5")
+    image_size = tuple(data_cfg.get("image_size", [64, 64]))
+
+    # Load model
+    logger.info("Loading model from: %s", model_path)
+    model = keras.models.load_model(model_path)
+
+    # Determine categories
+    if parsed.categories:
+        categories = parsed.categories
+    else:
+        dataset_path = parsed.data_dir or data_cfg.get("dataset_path", "data/EuroSATallBands")
+        if os.path.isdir(dataset_path):
+            categories = sorted(
+                d for d in os.listdir(dataset_path)
+                if os.path.isdir(os.path.join(dataset_path, d))
+            )
+        else:
+            categories = [str(i) for i in range(10)]
+            logger.warning("Could not detect categories; using numeric labels.")
+
+    # Predict
+    predicted = predict_single(
+        model, parsed.image, categories,
+        image_size=image_size, save_vis=parsed.save_vis,
+    )
+    print(f"Predicted class: {predicted}")
+
+
+if __name__ == "__main__":
+    main()

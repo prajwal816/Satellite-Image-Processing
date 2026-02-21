@@ -1,0 +1,20 @@
+data:
+  # Path to the root directory containing one sub-folder per class
+  # (e.g. AnnualCrop/, Forest/, …), each holding .tif image files.
+  # Download instructions are in data/README.md.
+  dataset_path: "data/EuroSATallBands/ds/images/remote_sensing/otherDatasets/sentinel_2/tif"
+  image_size: [64, 64]
+  test_split: 0.2
+  seed: 42
+
+training:
+  epochs: 20
+  batch_size: 32
+  optimizer: "adam"
+  loss: "sparse_categorical_crossentropy"
+
+model:
+  save_path: "models/eurosat_cnn_model.h5"
+
+output:
+  figures_dir: "reports/figures"

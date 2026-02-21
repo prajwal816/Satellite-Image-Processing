@@ -1,0 +1,75 @@
+# ===========================
+# Python
+# ===========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ===========================
+# Virtual environments
+# ===========================
+venv/
+.venv/
+env/
+.env/
+
+# ===========================
+# Jupyter
+# ===========================
+.ipynb_checkpoints/
+
+# ===========================
+# OS clutter
+# ===========================
+.DS_Store
+Thumbs.db
+
+# ===========================
+# Data & datasets
+# ===========================
+data/**
+!data/README.md
+datasets/
+*.zip
+*.tar.gz
+*.7z
+*.rar
+
+# ===========================
+# Model artifacts
+# ===========================
+models/**
+!models/README.md
+*.h5
+*.keras
+*.pt
+*.pth
+*.onnx
+*.pb
+*.tflite
+
+# ===========================
+# Logs & experiment tracking
+# ===========================
+logs/
+runs/
+wandb/
+mlruns/
+
+# ===========================
+# Reports (generated)
+# ===========================
+reports/figures/**
+!reports/figures/.gitkeep
+
+# ===========================
+# IDE
+# ===========================
+.vscode/
+.idea/
+*.swp
+*.swo
