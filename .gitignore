@@ -34,6 +34,7 @@ Thumbs.db
 data/**
 !data/README.md
 datasets/
+EuroSATallBands/
 *.zip
 *.tar.gz
 *.7z
