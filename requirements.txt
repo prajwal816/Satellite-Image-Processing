@@ -8,3 +8,4 @@ tifffile
 Pillow
 pyyaml
 pytest
+tqdm

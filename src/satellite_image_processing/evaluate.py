@@ -1,4 +1,4 @@
-"""Evaluation script for a trained EuroSAT CNN model."""
+"""Evaluation script for a trained EuroSAT CNN model (PyTorch)."""
 
 import argparse
 import logging
@@ -9,9 +9,9 @@ matplotlib.use("Agg")  # Non-interactive backend for headless environments
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
+import torch
 import yaml
 from sklearn.metrics import classification_report, confusion_matrix
-from tensorflow import keras
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ def main(args: list[str] | None = None) -> None:
     image_size = tuple(data_cfg.get("image_size", [64, 64]))
     test_split = data_cfg.get("test_split", 0.2)
     seed = data_cfg.get("seed", 42)
-    model_path = args.model or model_cfg.get("save_path", "models/eurosat_cnn_model.h5")
+    model_path = args.model or model_cfg.get("save_path", "models/eurosat_cnn_model.pth")
     figures_dir = args.figures_dir or output_cfg.get("figures_dir", "reports/figures")
 
     # Configure logging
@@ -53,29 +53,57 @@ def main(args: list[str] | None = None) -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
+    # Device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    logger.info("Using device: %s", device)
+
     # Load data (only the test split is used)
     from satellite_image_processing.data import load_dataset
 
     logger.info("Loading dataset from: %s", dataset_path)
-    _, x_test, _, y_test, categories = load_dataset(
+    _, test_loader, categories, x_test, y_test = load_dataset(
         dataset_path, image_size=image_size, test_split=test_split, seed=seed,
     )
+    num_classes = len(categories)
 
     # Load model
+    from satellite_image_processing.model import build_model
+
     logger.info("Loading model from: %s", model_path)
-    model = keras.models.load_model(model_path)
+    model = build_model(image_size=image_size, num_classes=num_classes, device=device)
+    model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
+    model.eval()
 
     # Evaluate
-    test_loss, test_acc = model.evaluate(x_test, y_test, verbose=1)
+    criterion = torch.nn.CrossEntropyLoss()
+    test_loss = 0.0
+    correct = 0
+    total = 0
+    all_preds = []
+
+    with torch.no_grad():
+        for images, labels in test_loader:
+            images, labels = images.to(device), labels.to(device)
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            test_loss += loss.item() * images.size(0)
+            _, predicted = torch.max(outputs, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+            all_preds.extend(predicted.cpu().numpy())
+
+    test_loss /= total
+    test_acc = correct / total
     logger.info("Test Loss: %.4f | Test Accuracy: %.4f", test_loss, test_acc)
 
     # Classification report
-    y_pred = np.argmax(model.predict(x_test), axis=1)
-    report = classification_report(y_test, y_pred, target_names=categories)
+    y_pred = np.array(all_preds)
+    y_true = y_test.numpy()
+    report = classification_report(y_true, y_pred, target_names=categories)
     logger.info("Classification Report:\n%s", report)
 
     # Confusion matrix
-    cm = confusion_matrix(y_test, y_pred)
+    cm = confusion_matrix(y_true, y_pred)
     plt.figure(figsize=(10, 8))
     sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
                 xticklabels=categories, yticklabels=categories)
