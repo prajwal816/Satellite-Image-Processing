@@ -14,7 +14,7 @@ training:
   loss: "sparse_categorical_crossentropy"
 
 model:
-  save_path: "models/eurosat_cnn_model.h5"
+  save_path: "models/eurosat_cnn_model.pth"
 
 output:
   figures_dir: "reports/figures"
