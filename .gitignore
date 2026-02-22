@@ -66,6 +66,11 @@ mlruns/
 # ===========================
 reports/figures/**
 !reports/figures/.gitkeep
+!reports/figures/cbam_attention_grid.png
+!reports/figures/cbam_channel_attention.png
+!reports/figures/cbam_spatial_attention.png
+!reports/figures/shap_explanation.png
+!reports/figures/shap_mean_values.png
 
 # ===========================
 # IDE
