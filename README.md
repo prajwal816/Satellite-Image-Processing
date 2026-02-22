@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="assets/Satellite.png" alt="Satellite Image Processing Banner" width="100%">
-</p>
+
 
 <h1 align="center">🛰️ Satellite Image Processing — EuroSAT CNN Classifier</h1>
 
@@ -13,6 +11,10 @@
   <img src="https://img.shields.io/badge/CUDA-Accelerated-76B900?logo=nvidia&logoColor=white" alt="CUDA">
   <img src="https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/License-Educational-blue" alt="License">
+</p>
+
+<p align="center">
+  <img src="assets/Satellite.png" alt="Satellite Image Processing Banner" width="100%">
 </p>
 
 ---
