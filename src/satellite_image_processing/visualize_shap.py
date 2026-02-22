@@ -34,10 +34,15 @@ def plot_shap_images(
 ) -> None:
     """Plot original images alongside their SHAP attribution heatmaps.
 
-    ``shap_values`` shape: ``(n_classes, n_samples, H, W, C)``
+    Parameters
+    ----------
+    shap_values : np.ndarray
+        Shape ``(n_samples, H, W, n_classes)`` — after CHW→HWC transpose
+        and channel-sum.
+    images : np.ndarray
+        Shape ``(n_samples, H, W, 3)`` in [0, 1].
     """
     n = min(n_samples, len(images))
-    n_classes = shap_values.shape[0]
     fig, axes = plt.subplots(n, 3, figsize=(15, 4 * n))
     if n == 1:
         axes = axes[np.newaxis, :]
@@ -47,10 +52,9 @@ def plot_shap_images(
         lbl = int(true_labels[i])
         true_cls = categories[lbl] if lbl < len(categories) else str(lbl)
 
-        # Use the correct class index, clamped to available range
-        cls_idx = min(lbl, n_classes - 1)
-        shap_for_pred = shap_values[cls_idx][i]           # (H, W, 3)
-        shap_abs = np.abs(shap_for_pred).sum(axis=-1)     # (H, W)
+        # SHAP values for the true class, summed across RGB
+        shap_for_cls = shap_values[i, :, :, lbl]  # (H, W)
+        shap_abs = np.abs(shap_for_cls)
 
         axes[i, 0].imshow(img)
         axes[i, 0].set_title(f"True: {true_cls}", fontsize=11, fontweight="bold")
@@ -79,20 +83,25 @@ def plot_shap_mean_values(
     categories: list[str],
     save_path: str,
 ) -> None:
-    """Bar chart of mean |SHAP| value per class."""
+    """Bar chart of mean |SHAP| value per class.
+
+    Parameters
+    ----------
+    shap_values : np.ndarray
+        Shape ``(n_samples, H, W, n_classes)``.
+    """
+    n_classes = shap_values.shape[-1]
     mean_shap = []
-    for cls_idx in range(len(categories)):
-        vals = shap_values[cls_idx]  # (n_samples, H, W, 3)
-        mean_shap.append(np.abs(vals).mean())
+    for cls_idx in range(n_classes):
+        mean_shap.append(np.abs(shap_values[:, :, :, cls_idx]).mean())
 
     fig, ax = plt.subplots(figsize=(12, 6))
     colors = plt.cm.RdYlGn(np.linspace(0.2, 0.8, len(categories)))
-    bars = ax.barh(categories, mean_shap, color=colors, edgecolor="white", linewidth=0.5)
+    bars = ax.barh(categories[:n_classes], mean_shap, color=colors, edgecolor="white", linewidth=0.5)
     ax.set_xlabel("Mean |SHAP| Value", fontsize=12)
     ax.set_title("Mean Absolute SHAP Values per Class", fontsize=14, fontweight="bold")
     ax.grid(axis="x", alpha=0.3)
 
-    # Annotate bar values
     for bar, val in zip(bars, mean_shap):
         ax.text(bar.get_width() + 0.0001, bar.get_y() + bar.get_height() / 2,
                 f"{val:.4f}", va="center", fontsize=10)
@@ -157,7 +166,6 @@ def main(args: list[str] | None = None) -> None:
             explain_indices.append(matches[0].item())
         if len(explain_indices) >= n_explain:
             break
-    # Pad with random indices if needed
     while len(explain_indices) < n_explain:
         idx = np.random.randint(0, len(x_test))
         if idx not in explain_indices:
@@ -176,15 +184,19 @@ def main(args: list[str] | None = None) -> None:
         explainer = shap.GradientExplainer(model, background)
 
         logger.info("Computing SHAP values for %d samples...", n_explain)
-        shap_values = explainer.shap_values(explain_images)
+        shap_values_raw = explainer.shap_values(explain_images)
 
-    # shap_values is a list of arrays (one per class): each (n_explain, C, H, W)
-    # Convert to (n_classes, n_explain, H, W, C) for plotting
-    shap_values_nhwc = []
-    for cls_shap in shap_values:
-        # cls_shap: (n_explain, 3, H, W) → (n_explain, H, W, 3)
-        shap_values_nhwc.append(np.transpose(cls_shap.cpu().numpy() if isinstance(cls_shap, torch.Tensor) else cls_shap, (0, 2, 3, 1)))
-    shap_values_nhwc = np.array(shap_values_nhwc)
+    # GradientExplainer returns ndarray of shape (n_samples, C, H, W, n_classes)
+    # Convert to numpy if tensor
+    if isinstance(shap_values_raw, torch.Tensor):
+        shap_values_raw = shap_values_raw.cpu().numpy()
+
+    # Sum across RGB channels: (n_samples, 3, H, W, n_classes) → (n_samples, H, W, n_classes)
+    # First transpose to (n_samples, H, W, 3, n_classes) then sum channel dim
+    sv = np.transpose(shap_values_raw, (0, 2, 3, 1, 4))  # (n, H, W, C, cls)
+    sv_summed = sv.sum(axis=3)                              # (n, H, W, cls)
+
+    logger.info("SHAP values shape after processing: %s", sv_summed.shape)
 
     # Images for display: CHW → HWC
     explain_imgs_np = explain_images.cpu().numpy().transpose(0, 2, 3, 1)
@@ -192,13 +204,13 @@ def main(args: list[str] | None = None) -> None:
 
     # ── Plot ─────────────────────────────────────────────────────────────
     plot_shap_images(
-        shap_values_nhwc, explain_imgs_np, categories, explain_labels,
+        sv_summed, explain_imgs_np, categories, explain_labels,
         os.path.join(figures_dir, "shap_explanation.png"),
         n_samples=n_explain,
     )
 
     plot_shap_mean_values(
-        shap_values_nhwc, categories,
+        sv_summed, categories,
         os.path.join(figures_dir, "shap_mean_values.png"),
     )
 
