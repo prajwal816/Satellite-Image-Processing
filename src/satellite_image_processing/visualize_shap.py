@@ -32,18 +32,25 @@ def plot_shap_images(
     save_path: str,
     n_samples: int = 4,
 ) -> None:
-    """Plot original images alongside their SHAP attribution heatmaps."""
+    """Plot original images alongside their SHAP attribution heatmaps.
+
+    ``shap_values`` shape: ``(n_classes, n_samples, H, W, C)``
+    """
     n = min(n_samples, len(images))
+    n_classes = shap_values.shape[0]
     fig, axes = plt.subplots(n, 3, figsize=(15, 4 * n))
+    if n == 1:
+        axes = axes[np.newaxis, :]
 
     for i in range(n):
         img = images[i]
-        true_cls = categories[true_labels[i]] if true_labels[i] < len(categories) else str(true_labels[i])
+        lbl = int(true_labels[i])
+        true_cls = categories[lbl] if lbl < len(categories) else str(lbl)
 
-        # SHAP values for the predicted class — sum across RGB channels
-        shap_for_pred = shap_values[true_labels[i]][i]  # (H, W, 3)
-        shap_abs = np.abs(shap_for_pred).sum(axis=-1)   # (H, W)
-        shap_signed = shap_for_pred.sum(axis=-1)         # (H, W)
+        # Use the correct class index, clamped to available range
+        cls_idx = min(lbl, n_classes - 1)
+        shap_for_pred = shap_values[cls_idx][i]           # (H, W, 3)
+        shap_abs = np.abs(shap_for_pred).sum(axis=-1)     # (H, W)
 
         axes[i, 0].imshow(img)
         axes[i, 0].set_title(f"True: {true_cls}", fontsize=11, fontweight="bold")
